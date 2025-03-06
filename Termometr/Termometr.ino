@@ -1,6 +1,7 @@
-// ========================
+/***********************************************************
 // Konfiguracja Blynk IoT Cloud
-// ========================
+************************************************************/
+
 #define BLYNK_TEMPLATE_ID "TMPL4CCpyI19S"
 #define BLYNK_TEMPLATE_NAME "Termometr"
 #define BLYNK_AUTH_TOKEN   "M0zAG-YnWPr9FhX3R23YHlgzxggjAcIk"
@@ -9,42 +10,48 @@
 #include <WiFi.h>
 #include <BlynkSimpleEsp32.h>
 
-// ========================
+/***********************************************************
 // Biblioteki sensorów i wyświetlacza
-// ========================
+************************************************************/
+
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_AHTX0.h>
 #include <TFT_eSPI.h>
 
-// ========================
+/***********************************************************
 // Biblioteka do obsługi 433 MHz
-// ========================
+************************************************************/
+
 #include <RCSwitch.h>
 
-// ========================
+/***********************************************************
 // Obiekty czujników
-// ========================
+************************************************************/
+
 Adafruit_BMP280 bmp;
 Adafruit_AHTX0 aht; // AHT20
 
-// ========================
+/***********************************************************
 // Obiekt ekranu TFT
-// ========================
+************************************************************/
+
 TFT_eSPI tft = TFT_eSPI();
 
-// ========================
+/***********************************************************
 // Ustawienia I2C (SDA=20, SCL=21)
-// ========================
+************************************************************/
+
 #define SDA_PIN 20
 #define SCL_PIN 21
 
-// ========================
+/***********************************************************
 // Timery i zmienne globalne
-// ========================
+************************************************************/
+
 BlynkTimer timer;
 
-// Odczyty
+// Zmienne na odczyty
 float g_tempAHT  = 0;  // Temp wewn. (AHT20)
 float g_humidity = 0;  // Wilgotnosc (AHT20)
 float g_pressure = 0;  // Cisnienie (BMP280)
@@ -70,16 +77,14 @@ bool blynkConnected = false;
      jeśli wifiConnected == false
    - Jeśli wifiConnected == true, wyświetla "WiFi OK" w zielonym
 ************************************************************/
+
 void drawWifiStatus() {
-  // Pozycja, w której chcemy rysować napis
   int16_t wifiX = 380;
   int16_t wifiY = 120;
 
-  // Rozmiar czcionki
   tft.setTextSize(3);
 
   if (!wifiConnected) {
-    // WiFi niepodłączone: napis "WiFi" w kolorze niebieskim z przekreśleniem
     tft.setCursor(wifiX, wifiY);
     tft.setTextColor(TFT_RED, TFT_BLACK);
     String textb = "Brak";
@@ -89,7 +94,6 @@ void drawWifiStatus() {
     tft.print(textw);
 
   } else {
-    // WiFi podłączone: napis "WiFi OK" w kolorze zielonym (bez przekreślenia)
     tft.setCursor(wifiX, wifiY);
     tft.fillRect(wifiX, wifiY+24, 100, 24, TFT_BLACK);
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -101,6 +105,7 @@ void drawWifiStatus() {
    Funkcja reInitBMP() i funkcja do resetu ATH
    Próbuje ponownie zainicjalizować BMP280, jeśli wystąpił błąd
 ************************************************************/
+
 bool reInitBMP() {
   Serial.println("reInitBMP(): ponowna inicjalizacja BMP280...");
   if (bmp.begin(0x76)) {
@@ -115,7 +120,6 @@ bool reInitBMP() {
   return false;
 }
 
-
 bool reInitAHT() {
   Serial.println("reInitAHT(): ponowna inicjalizacja AHT20...");
   if (aht.begin()) {
@@ -125,12 +129,14 @@ bool reInitAHT() {
   Serial.println("AHT20 nadal nie odpowiada!");
   return false;
 }
+
 /***********************************************************
    Funkcja readSensors()
    - Odczyt AHT20
    - Odczyt BMP280 (z re-inicjalizacją jeśli <690 hPa)
    - Odczyt RF (z obsługą g_lastRFMillis)
 ************************************************************/
+
 void readSensors() {
   // --- AHT20 ---
   sensors_event_t tempEvent, humidityEvent;
@@ -144,10 +150,8 @@ void readSensors() {
     Serial.println("AHT20: Odczyt poza zakresem, reInitAHT...");
     if (!reInitAHT()) {
       Serial.println("AHT20: reInit nieudany, zostawiam starą wartość / lub ERR");
-      // Możesz zostawić g_tempAHT, g_humidity bez zmian albo ustawić je na NAN
       return;
     } else {
-      // Spróbuj ponownie odczytać po udanej re-inicjalizacji
       aht.getEvent(&tempEvent, &humidityEvent);
       newTemp = tempEvent.temperature;
       newHum  = humidityEvent.relative_humidity;
@@ -158,7 +162,6 @@ void readSensors() {
       }
     }
   }
-  // Jeśli dotarliśmy tu, newTemp i newHum są poprawne
   g_humidity = newTemp;
   g_tempAHT = newHum;
 
@@ -188,8 +191,6 @@ void readSensors() {
     mySwitch.resetAvailable();
 
     if (receivedValue != 0) {
-      // Zakładamy, że nadajnik wysyła temp * 100
-      // np. 2437 -> 24.37 C
       g_tempDS = (float)receivedValue / 100.0;
       g_firstPacketReceived = true;
       g_lastRFMillis = millis(); // nowy pakiet = aktualizacja czasu
@@ -207,6 +208,7 @@ void readSensors() {
    Funkcja drawStaticLabels()
    - Rysuje stałe etykiety na TFT (wywołanie raz w setup)
 ************************************************************/
+
 void drawStaticLabels() {
   tft.fillScreen(TFT_BLACK);
   tft.setTextSize(4);
@@ -227,6 +229,7 @@ void drawStaticLabels() {
    - Czyści fragmenty ekranu i wyświetla bieżące wartości
    - Sprawdza, czy minęło 60s od ostatniego pakietu RF
 ************************************************************/
+
 void updateDynamicData() {
   int valueX = 1;      
   int yTemp = 60;      
@@ -259,19 +262,15 @@ void updateDynamicData() {
   tft.setCursor(valueX, yTempZew);
   unsigned long now = millis();
   if (!g_firstPacketReceived) {
-    // Jeszcze nigdy nie dostaliśmy pakietu -> Brak połączenia
     tft.setTextColor(TFT_RED, TFT_BLACK);
     tft.print("Brak polaczenia");
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
   } else {
-    // Mieliśmy już co najmniej jeden pakiet
     if ((now - g_lastRFMillis) > RF_TIMEOUT_MS) {
-      // Minęło >60s od ostatniego pakietu -> znowu Brak połączenia
       tft.setTextColor(TFT_RED, TFT_BLACK);
       tft.print("Brak polaczenia");
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
     } else {
-      // Mniej niż 60s -> wyświetlamy g_tempDS
       tft.printf("%.2f ÷C               ", g_tempDS); 
     }
   }
@@ -283,6 +282,7 @@ void updateDynamicData() {
    Funkcja updateTFT()
    - Najpierw readSensors(), potem updateDynamicData()
 ************************************************************/
+
 void updateTFT() {
   readSensors();
   updateDynamicData();
@@ -292,6 +292,7 @@ void updateTFT() {
    Funkcja sendDataBlynk()
    - readSensors() -> wysyła do Blynk
 ************************************************************/
+
 void sendDataBlynk() {
   readSensors();
   Blynk.virtualWrite(V1, g_tempAHT); 
@@ -305,6 +306,7 @@ void sendDataBlynk() {
    FUNKCJE LACZENIA Z WIFI/BLYNK
    - przykład nieblokującej próby WiFi
 ************************************************************/
+
 void connectWifiShort() {
   Serial.println("Proba szybkiego polaczenia z WiFi...");
 
@@ -350,6 +352,7 @@ void connectBlynkShort() {
    - Jeśli się uda -> connectBlynkShort()
    - Zawsze na końcu updateDynamicData() (by zaktualizować napis WiFi)
 ************************************************************/
+
 void checkWiFiStatus() {
   if (WiFi.status() == WL_CONNECTED) {
     // WiFi jest ok
@@ -367,7 +370,6 @@ void checkWiFiStatus() {
   updateDynamicData();
 }
 
-
 /***********************************************************
    Funkcja setup()
    - Najpierw czujniki + TFT
@@ -375,6 +377,7 @@ void checkWiFiStatus() {
    - Potem krotka proba WiFi + Blynk
    - Timery
 ************************************************************/
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -424,7 +427,6 @@ void setup() {
     connectBlynkShort();
   }
 
-
   // 4) Ustawienie timerów
   timer.setInterval(3000L, updateTFT);      // co 3 sekundy odczyt + TFT
   timer.setInterval(300000L, sendDataBlynk);// co 5 min Blynk
@@ -436,6 +438,7 @@ void setup() {
 /***********************************************************
    Funkcja loop()
 ************************************************************/
+
 void loop() {
   if (wifiConnected) {
     Blynk.run();
