@@ -50,6 +50,7 @@ TFT_eSPI tft = TFT_eSPI();
 ************************************************************/
 BlynkTimer timer;
 Preferences prefs;
+WiFiManager wifiManager;
 
 // Zmienne na odczyty
 float g_tempAHT  = 0;  // Temp wewn. (AHT20)
@@ -251,14 +252,14 @@ void updateDynamicData() {
 
   // AHT20
   tft.setCursor(valueX, yTemp);
-  tft.printf("%.2f C", g_tempAHT);
+  tft.printf("%.2f ÷C", g_tempAHT);
 
   tft.setCursor(230, yHum);
   tft.printf("%.1f %%", g_humidity);
 
   // BMP280
   tft.setCursor(valueX, yPres);
-  tft.printf("%.1f hPa", g_pressure);
+  tft.printf("%.0f hPa", g_pressure);
 
   // RF
   tft.setCursor(valueX, yTempZew);
@@ -273,7 +274,7 @@ void updateDynamicData() {
       tft.print("Brak polaczenia");
       tft.setTextColor(TFT_WHITE, TFT_BLACK);
     } else {
-      tft.printf("%.2f C", g_tempDS);
+      tft.printf("%.2f ÷C               ", g_tempDS);
     }
   }
   drawWifiStatus();
@@ -307,7 +308,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  // 1. Wczytanie altitude z Preferences
+  // [1] Wczytanie altitude z Preferences
   prefs.begin("MojeUstawienia", false);
   float storedAlt = prefs.getFloat("altitude", 355.0);
   g_altitude = storedAlt;
@@ -315,16 +316,13 @@ void setup() {
   Serial.print("Wczytano altitude z Preferences: ");
   Serial.println(g_altitude);
 
-  // 2. Inicjalizacja I2C
+  // [2] Inicjalizacja I2C i czujników
   Wire.setPins(SDA_PIN, SCL_PIN);
   Wire.begin();
 
-  // 3. Inicjalizacja AHT20
   if (!aht.begin()) {
     Serial.println("Nie udalo sie zainicjowac AHT20!");
   }
-
-  // 4. Inicjalizacja BMP280
   if (!bmp.begin(0x76)) {
     Serial.println("BMP280 nie znaleziony na 0x76, proba 0x77...");
     if (!bmp.begin(0x77)) {
@@ -337,50 +335,68 @@ void setup() {
                   Adafruit_BMP280::FILTER_OFF,
                   Adafruit_BMP280::STANDBY_MS_1000);
 
-  // 5. Inicjalizacja TFT
-  tft.init();
-  tft.setRotation(1);
-  drawStaticLabels(); 
-
-  // 6. Inicjalizacja RCSwitch
+  // RCSwitch
   mySwitch.enableReceive(RX_PIN);
   mySwitch.setProtocol(1);
   mySwitch.setPulseLength(350);
   Serial.println("Odbiornik RF na pinie: " + String(RX_PIN));
 
-  // 7. Jednorazowe odświeżenie ekranu
+  // [3] Inicjalizacja TFT i jednorazowe odświeżenie ekranu
+  tft.init();
+  tft.setRotation(1);
+  drawStaticLabels(); 
   updateTFT();
 
-  // 8. Konfiguracja WiFiManager
-  {
-    WiFiManager wifiManager;
-    // Czekamy 60s na połączenie z zapamiętaną siecią
-    wifiManager.setTimeout(60);
+  // [4] Ręczna próba starej sieci WiFi (60s), w sposób NIEblokujący pętli setup
+  //    - najprościej: "blokująca" pętla z krótkim delay i updateTFT
+  //    - ALBO start WiFi i w pętli 60s sprawdzanie statusu, ale to wciąż w setup
+  //    - jeśli chcesz w loop() odświeżać, musisz tam przenieść logikę czekania
+  //    - tu pokazuję "pół-blokującą" pętlę z krótkim delay, by zachować minimalne odświeżanie
 
-    // autoConnect -> jeśli nie uda się w 60s, tworzy AP "Termometr_AP"
-    if(!wifiManager.autoConnect("Termometr_AP")) {
-      Serial.println("WiFiManager: nie udalo sie polaczyc / skonfigurowac. Pracuje offline.");
-      wifiConnected = false;
-    } else {
-      Serial.println("WiFiManager: polaczono z WiFi!");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(); // używa zapamiętanych danych (NVS)
+  bool oldWifiConnected = false;
+  unsigned long startMillis = millis();
+  Serial.println("Proba laczenia z poprzednia siecia przez 60s...");
+  while (millis() - startMillis < 60000) {
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("Polaczono z poprzednia siecia WiFi!");
+      oldWifiConnected = true;
       wifiConnected = true;
+      break;
     }
+    // Krótka pauza
+    delay(100);
+    // Ewentualne drobne odświeżenie
+    // (możesz wywołać updateTFT() tu, ale ostrożnie, bo setup jeszcze się nie skończy)
   }
 
-  // 9. Jeśli WiFi jest OK, łączymy Blynk
+  // [5] Jesli brak polaczenia -> WiFiManager w trybie nieblokujacym
+  if (!oldWifiConnected) {
+    Serial.println("Nie udalo sie polaczyc w 60s -> uruchamiam WiFiManager AP");
+    
+    // Tworzymy WiFiManager w trybie nieblokującym
+    wifiManager.setConfigPortalBlocking(false); 
+    // (opcjonalnie) wifiManager.setConfigPortalTimeout(120); // AP np. 120s
+    wifiManager.startConfigPortal("Termometr_AP"); 
+    // Nie sprawdzamy wyniku, bo w trybie nieblokujacym i tak "autoConnect" by nie mialo sensu
+    wifiConnected = false;
+  }
+
+  // [6] Jesli polaczylismy sie do starej sieci, start Blynk
   if (wifiConnected) {
     Blynk.begin(BLYNK_AUTH_TOKEN, WiFi.SSID().c_str(), WiFi.psk().c_str());
     if (Blynk.connected()) {
       blynkConnected = true;
       Serial.println("Blynk polaczony!");
     } else {
-      Serial.println("Nie udalo sie polaczyc z Blynk (ale WiFi jest) - kontynuujemy offline Blynk");
+      Serial.println("WiFi jest, ale Blynk sie nie polaczyl. Kontynuujemy offline");
     }
   }
 
-  // 10. Ustawienie timerów
-  timer.setInterval(3000L, updateTFT);      // co 3 sekundy odczyt + TFT
-  timer.setInterval(300000L, sendDataBlynk);// co 5 min Blynk
+  // [7] Ustawiamy timery (co 3s updateTFT, co 5min Blynk)
+  timer.setInterval(3000L, updateTFT);      
+  timer.setInterval(300000L, sendDataBlynk); 
 
   Serial.println("SETUP zakonczony");
 }
@@ -389,6 +405,37 @@ void setup() {
    Funkcja loop()
 ************************************************************/
 void loop() {
+  // Jesli WiFiManager AP jest aktywne, to .process() je obsługuje w tle
+  wifiManager.process(); 
+
+  // Sprawdzamy status WiFi w każdej pętli
+  if (wifiManager.getConfigPortalActive()) {
+    // AP jest aktywne, czekamy na konfiguracje
+    // Ekran sie odswieza bo nic nie jest blokowane
+    wifiConnected = false;
+  } else {
+    // AP nie jest aktywne
+    if (WiFi.status() == WL_CONNECTED) {
+      // Jesli polaczone, a jeszcze nie oznaczylismy
+      if (!wifiConnected) {
+        Serial.println("Skonfigurowano nowa siec, polaczono WiFi!");
+        wifiConnected = true;
+        // Start Blynk, jesli jeszcze nie
+        if (!blynkConnected) {
+          Blynk.begin(BLYNK_AUTH_TOKEN, WiFi.SSID().c_str(), WiFi.psk().c_str());
+          if (Blynk.connected()) {
+            blynkConnected = true;
+            Serial.println("Blynk polaczony!");
+          } else {
+            Serial.println("Blynk sie nie polaczyl!");
+          }
+        }
+      }
+    } else {
+      // Brak polaczenia
+      wifiConnected = false;
+    }
+  }
   if (wifiConnected) {
     Blynk.run();
   }
