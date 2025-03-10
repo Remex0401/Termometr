@@ -56,8 +56,9 @@ WiFiManager wifiManager;
 float g_tempAHT  = 0;  // Temp wewn. (AHT20)
 float g_humidity = 0;  // Wilgotnosc (AHT20)
 float g_pressure = 0;  // Cisnienie (BMP280)
-float g_tempDS   = 2137;  // Temp zew. (RF)
+float g_tempDS   = 0;  // Temp zew. (RF)
 bool g_firstPacketReceived = false;  // flaga, czy odebrano kiedykolwiek pakiet
+float g_temp_offset = 0;
 
 float g_altitude = 355.0; // Wysokość n.p.m. zapisywana w Preferences
 
@@ -97,7 +98,7 @@ void drawWifiStatus() {
 }
 
 /***********************************************************
-// Obsługa zmiany wysokości z Blynk (np. na V4)
+// Obsługa zmiany wysokości oraz offestu temperatury z Blynk
 ************************************************************/
 BLYNK_WRITE(V4) {
   float newAltitude = param.asFloat();
@@ -112,6 +113,24 @@ BLYNK_WRITE(V4) {
   Serial.println(newAltitude);
 }
 
+BLYNK_WRITE(V5) {
+  float offset = param.asFloat();
+  g_temp_offset = offset;
+
+  // Zapis w Preferences
+  prefs.begin("MojeUstawienia", false);
+  prefs.putFloat("temp_offset", offset);
+  prefs.end();
+
+  Serial.print("Zapisano offset w Preferences: ");
+  Serial.println(offset);
+}
+
+BLYNK_CONNECTED() {
+  Serial.println("Blynk połączony! Synchronizuję piny...");
+  Blynk.syncVirtual(V4);  // Synchronizacja wysokości
+  Blynk.syncVirtual(V5);  // Synchronizacja offsetu temperatury
+}
 /***********************************************************
    Funkcja reInitBMP() i reInitAHT()
 ************************************************************/
@@ -252,7 +271,7 @@ void updateDynamicData() {
 
   // AHT20
   tft.setCursor(valueX, yTemp);
-  tft.printf("%.2f ÷C", g_tempAHT);
+  tft.printf("%.2f ÷C", g_tempAHT + g_temp_offset);
 
   tft.setCursor(230, yHum);
   tft.printf("%.1f %%", g_humidity);
@@ -294,10 +313,10 @@ void updateTFT() {
 ************************************************************/
 void sendDataBlynk() {
   readSensors();
-  Blynk.virtualWrite(V1, g_tempAHT); 
+  Blynk.virtualWrite(V1, g_tempAHT + g_temp_offset); 
   Blynk.virtualWrite(V0, g_humidity);
   Blynk.virtualWrite(V3, g_pressure);
-  Blynk.virtualWrite(V4, g_tempDS);
+  Blynk.virtualWrite(V2, g_tempDS);
   Serial.println("Dane wyslane do Blynk");
 }
 
@@ -311,8 +330,10 @@ void setup() {
   // [1] Wczytanie altitude z Preferences
   prefs.begin("MojeUstawienia", false);
   float storedAlt = prefs.getFloat("altitude", 355.0);
-  g_altitude = storedAlt;
+  float storedOffset = prefs.getFloat("temp_offset", 0.0);
   prefs.end();
+  g_altitude    = storedAlt;
+  g_temp_offset = storedOffset;
   Serial.print("Wczytano altitude z Preferences: ");
   Serial.println(g_altitude);
 
