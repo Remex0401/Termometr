@@ -373,9 +373,9 @@ void setup() {
   //    - ALBO start WiFi i w pętli 60s sprawdzanie statusu, ale to wciąż w setup
   //    - jeśli chcesz w loop() odświeżać, musisz tam przenieść logikę czekania
   //    - tu pokazuję "pół-blokującą" pętlę z krótkim delay, by zachować minimalne odświeżanie
-
+  delay(5000);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(); // używa zapamiętanych danych (NVS)
+
   bool oldWifiConnected = false;
   unsigned long startMillis = millis();
   Serial.println("Proba laczenia z poprzednia siecia przez 60s...");
@@ -386,10 +386,11 @@ void setup() {
       wifiConnected = true;
       break;
     }
+    else   WiFi.begin(); // używa zapamiętanych danych (NVS)
     // Krótka pauza
     delay(100);
     // Ewentualne drobne odświeżenie
-    // (możesz wywołać updateTFT() tu, ale ostrożnie, bo setup jeszcze się nie skończy)
+    updateTFT();
   }
 
   // [5] Jesli brak polaczenia -> WiFiManager w trybie nieblokujacym
