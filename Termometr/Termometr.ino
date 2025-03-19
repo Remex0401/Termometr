@@ -209,26 +209,34 @@ void readSensors() {
   g_pressure = bmp.seaLevelForAltitude(g_altitude, newPressure);
 
   // --- RF (RCSwitch) ---
-  if (mySwitch.available()) {
-    long receivedValue = mySwitch.getReceivedValue();
-    mySwitch.resetAvailable();
-    if (receivedValue != 0) {
-      float newTempRF = (float)receivedValue / 100.0;
-      if (newTempRF < -50 || newTempRF > 80) {
-        Serial.println("RF: Odczyt poza zakresem, ignoruje");
-      } else {
-        g_tempDS = newTempRF;
-        g_firstPacketReceived = true;
-        g_lastRFMillis = millis();
-        Serial.print("RF: Otrzymano wartosc = ");
-        Serial.println(receivedValue);
-        Serial.print("Przeliczona temp zew = ");
-        Serial.println(g_tempDS);
-      }
+if (mySwitch.available()) {
+  long rawValue = mySwitch.getReceivedValue(); 
+  mySwitch.resetAvailable();
+
+  // Zamiast 'receivedValue' używamy 'rawValue' (ta sama wartość),
+  // ale interpretujemy je jako 16-bit int ze znakiem:
+  if (rawValue != 0) {
+    int16_t signedValue = (int16_t) rawValue;
+    float newTempRF = (float)signedValue / 100.0; // Odtwarzamy temperaturę
+
+    if (newTempRF < -50 || newTempRF > 80) {
+      Serial.println("RF: Odczyt poza zakresem, ignoruje");
     } else {
-      Serial.println("RF: Kod 0 (niezidentyfikowany).");
+      g_tempDS = newTempRF;
+      g_firstPacketReceived = true;
+      g_lastRFMillis = millis();
+
+      Serial.print("RF: Otrzymano wartosc = ");
+      Serial.println(rawValue);
+      Serial.print("Przeliczona temp zew = ");
+      Serial.println(g_tempDS);
     }
+  } else {
+    Serial.println("RF: Kod 0 (niezidentyfikowany).");
   }
+
+}
+
 }
 
 /***********************************************************
